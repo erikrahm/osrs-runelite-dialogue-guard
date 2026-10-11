@@ -2,17 +2,16 @@
  * Dialogue Guard — stops dialogue-skipping keys from spilling into the chat box.
  * BSD-2-Clause, see LICENSE.
  *
- * How it decides: a dialogue page accepts exactly one guarded key (1-9, space, enter). Once one has been sent,
- * the plugin is "armed" and swallows every further guarded key until either a new dialogue page loads (which
- * needs a key of its own) or you stop pressing guarded keys for the configured window. Any other key — a letter —
- * ends the guard at once, because that is clearly deliberate typing. Nothing is ever swallowed unless a dialogue
- * key has just been pressed, so normal chat is untouched.
+ * This class is the RuneLite wiring: it feeds dialogue open/close events and key events into GuardState (the
+ * decision logic) and acts on its answer. Two extras live here because they need the client: the leading-space
+ * rule (space is dropped while the chat box is empty) and clearing digit-only leftovers when a dialogue opens.
  */
 package com.dialogueguard;
 
 import com.google.inject.Provides;
 import java.awt.event.KeyEvent;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -22,7 +21,6 @@ import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarClientID;
-import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.input.KeyListener;
@@ -41,6 +39,10 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	static final String CONFIG_GROUP = "dialogueguard";
 	/** config key the all-time counter is persisted under (not shown in the settings panel) */
 	private static final String KEY_SAVED = "keysSaved";
+	/** the all-time counter is written at most this often while keys are being swallowed (and always on shutdown) */
+	private static final long PERSIST_INTERVAL_MS = 1000;
+	/** chat-box contents that are safe to clear: digits and spaces only */
+	private static final Pattern JUNK = Pattern.compile("[0-9 ]+");
 
 	/** Interface groups that take a key to advance: NPC/player chat, option menus, message/sprite boxes, level-ups, make-x. */
 	private static final int[] DIALOGUE_GROUPS = {
@@ -49,28 +51,19 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	};
 
 	@Inject private Client client;
-	@Inject private ClientThread clientThread;
 	@Inject private ConfigManager configManager;
 	@Inject private KeyManager keyManager;
 	@Inject private OverlayManager overlayManager;
 	@Inject private DialogueGuardConfig config;
 	@Inject private DialogueGuardHint hint;
 
-	/** how many dialogue interfaces are open right now (client thread writes, key thread reads) */
-	private volatile int openDialogues;
-	/** a guarded key has been sent to the page that is open (or was just open); further ones are spill-over */
-	private volatile boolean armed;
-	/** when the last guarded key was pressed, armed or not */
-	private volatile long lastGuardedAt;
+	private final GuardState state = new GuardState(() -> config.windowMs());
+	/** keys swallowed since the plugin was installed; persisted in the config */
+	private final AtomicInteger counter = new AtomicInteger();
+
 	/** the decision made in keyPressed, so keyTyped / keyReleased for the same key follow it */
 	private volatile boolean swallowingCurrentKey;
-	/** a guarded key is physically held down (pressed, no release yet): the pause can't start until it's let go */
-	private volatile boolean guardedKeyHeld;
-	/** if no key event arrives for this long we assume the release was lost (focus change), so a stuck "held" can't pin the guard */
-	private static final long HELD_STALE_MS = 3000;
-
-	/** keys swallowed since the plugin was installed; persisted in the config */
-	private final AtomicInteger swallowed = new AtomicInteger();
+	private volatile long lastPersist;
 
 	@Provides
 	DialogueGuardConfig provideConfig(ConfigManager configManager)
@@ -81,8 +74,9 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	@Override
 	protected void startUp()
 	{
-		reset();
-		swallowed.set(loadSaved());
+		state.reset();
+		swallowingCurrentKey = false;
+		counter.set(loadSaved());
 		keyManager.registerKeyListener(this);
 		overlayManager.add(hint);
 	}
@@ -93,8 +87,16 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		keyManager.unregisterKeyListener(this);
 		overlayManager.remove(hint);
 		persistSaved();
-		reset();
+		state.reset();
 	}
+
+	/** Keys swallowed all-time, for the hint. */
+	int swallowedCount()
+	{
+		return counter.get();
+	}
+
+	// ------------------------------------------------------------------ all-time counter
 
 	private int loadSaved()
 	{
@@ -111,48 +113,22 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 
 	private void persistSaved()
 	{
-		configManager.setConfiguration(CONFIG_GROUP, KEY_SAVED, String.valueOf(swallowed.get()));
+		configManager.setConfiguration(CONFIG_GROUP, KEY_SAVED, String.valueOf(counter.get()));
 	}
 
-	private volatile long lastPersist;
-
-	/** One more key eaten: bump the all-time counter (persisted at most once a second, and on shutdown) and flash the hint. */
-	private void countSwallowed()
+	/** One more key eaten. The hint only flashes for dialogue spill-over; a dropped leading space is silent. */
+	private void recordSwallow(long now, boolean flash)
 	{
-		swallowed.incrementAndGet();
-		long now = System.currentTimeMillis();
-		if (now - lastPersist > 1000)
+		counter.incrementAndGet();
+		if (now - lastPersist > PERSIST_INTERVAL_MS)
 		{
 			lastPersist = now;
 			persistSaved();
 		}
-		hint.flash();
-	}
-
-	private void reset()
-	{
-		openDialogues = 0;
-		armed = false;
-		lastGuardedAt = 0;
-		swallowingCurrentKey = false;
-		guardedKeyHeld = false;
-	}
-
-	/** Still inside the guard window: the last guarded key was recent, or one is still being held down. */
-	private boolean withinWindow(long now)
-	{
-		long since = now - lastGuardedAt;
-		if (guardedKeyHeld && since < HELD_STALE_MS)
+		if (flash)
 		{
-			return true;
+			hint.flash(counter.get());
 		}
-		return since < config.windowMs();
-	}
-
-	/** Keys swallowed all-time, for the hint. */
-	int swallowedCount()
-	{
-		return swallowed.get();
 	}
 
 	// ------------------------------------------------------------------ dialogue state (client thread)
@@ -162,7 +138,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	{
 		if (e.getGameState() != GameState.LOGGED_IN)
 		{
-			reset();
+			state.reset();
 		}
 	}
 
@@ -171,8 +147,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	{
 		if (isDialogue(e.getGroupId()))
 		{
-			openDialogues++;
-			armed = false;   // a fresh page: it needs a key of its own
+			state.dialogueOpened(e.getGroupId());
 			if (config.clearJunkOnDialogue())
 			{
 				clearJunkFromChat();
@@ -180,25 +155,12 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		}
 	}
 
-	/** Client thread: wipe the chat box if all it holds is digits and spaces left over from an earlier dialogue. */
-	private void clearJunkFromChat()
-	{
-		String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
-		if (typed == null || typed.isEmpty() || !typed.matches("[0-9 ]+"))
-		{
-			return;
-		}
-		client.setVarcStrValue(VarClientID.CHATINPUT, "");
-		client.runScript(ScriptID.CHAT_PROMPT_INIT);   // redraw the input line
-	}
-
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed e)
 	{
-		if (isDialogue(e.getGroupId()) && openDialogues > 0)
+		if (isDialogue(e.getGroupId()))
 		{
-			openDialogues--;
-			// stay armed: the next guarded keys within the window are the spill-over we exist to catch
+			state.dialogueClosed(e.getGroupId());
 		}
 	}
 
@@ -212,6 +174,18 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 			}
 		}
 		return false;
+	}
+
+	/** Wipe the chat box if all it holds is digits and spaces left over from an earlier dialogue. Client thread. */
+	private void clearJunkFromChat()
+	{
+		String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
+		if (typed == null || typed.isEmpty() || !JUNK.matcher(typed).matches())
+		{
+			return;
+		}
+		client.setVarcStrValue(VarClientID.CHATINPUT, "");
+		client.runScript(ScriptID.CHAT_PROMPT_INIT);   // redraw the input line
 	}
 
 	// ------------------------------------------------------------------ keys (AWT thread)
@@ -252,40 +226,29 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		{
 			if (!isModifier(code))
 			{
-				armed = false;   // a real key: whatever they're typing now is on purpose
+				state.otherKeyPressed();
 			}
 			return;
 		}
 		long now = System.currentTimeMillis();
-		boolean inWindow = withinWindow(now);
-		guardedKeyHeld = true;   // until keyReleased
-		if (openDialogues > 0 && !armed)
+		if (state.guardedKeyPressed(now) == GuardState.Decision.SWALLOW)
 		{
-			// the one key this page is waiting for
-			armed = true;
-			lastGuardedAt = now;
+			swallow(e, now, true);
 			return;
 		}
-		if (armed && inWindow)
+		// Not spill-over. One more rule for space: a message never starts with one.
+		if (code == KeyEvent.VK_SPACE && config.noLeadingSpace() && !state.dialogueOpen() && chatInputIsBlank())
 		{
-			// spill-over: the page already had its key (or just closed), and they're still pressing or holding.
-			// Every guarded key extends the window, space included.
-			lastGuardedAt = now;
-			swallowingCurrentKey = true;
-			countSwallowed();
-			e.consume();
-			return;
+			state.touch(now);
+			swallow(e, now, false);
 		}
-		// the window lapsed: this is ordinary typing (a number in chat, enter to send)
-		armed = false;
-		if (code == KeyEvent.VK_SPACE && config.noLeadingSpace() && openDialogues == 0 && chatInputIsBlank())
-		{
-			// a message never starts with a space; quietly drop it (no hint: holding space outside a dialogue is common and harmless)
-			lastGuardedAt = now;
-			swallowingCurrentKey = true;
-			swallowed.incrementAndGet();
-			e.consume();
-		}
+	}
+
+	private void swallow(KeyEvent e, long now, boolean flash)
+	{
+		swallowingCurrentKey = true;
+		recordSwallow(now, flash);
+		e.consume();
 	}
 
 	/** True when the chat box has nothing typed in it yet (or only spaces). */
@@ -309,8 +272,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	{
 		if (isGuarded(e.getKeyCode()))
 		{
-			guardedKeyHeld = false;
-			lastGuardedAt = System.currentTimeMillis();   // the pause starts now, not at the press
+			state.guardedKeyReleased(System.currentTimeMillis());
 		}
 		if (swallowingCurrentKey)
 		{

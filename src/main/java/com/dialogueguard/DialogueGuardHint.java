@@ -9,7 +9,6 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
-import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.Overlay;
@@ -20,31 +19,40 @@ public class DialogueGuardHint extends Overlay
 	private static final long SHOW_MS = 1500;
 	private static final Color BG = new Color(0, 0, 0, 160);
 	private static final Color FG = new Color(255, 200, 80);
+	private static final int PAD_X = 5;
+	private static final int PAD_Y = 2;
 
 	private final DialogueGuardConfig config;
-	private final DialogueGuardPlugin plugin;
-	/** keys swallowed in the current burst (reset once the hint has faded) */
-	private final AtomicInteger burst = new AtomicInteger();
+	private final Font font = FontManager.getRunescapeSmallFont();
+
+	/** keys swallowed in the current burst (a burst ends once the hint has faded) */
+	private int burst;
 	private volatile long showUntil;
-	private Font font;
+	/** the line to draw, built when a key is swallowed rather than every frame */
+	private volatile String text = "";
 
 	@Inject
-	public DialogueGuardHint(DialogueGuardConfig config, DialogueGuardPlugin plugin)
+	public DialogueGuardHint(DialogueGuardConfig config)
 	{
 		this.config = config;
-		this.plugin = plugin;
 		setPosition(OverlayPosition.ABOVE_CHATBOX_RIGHT);
 	}
 
-	/** Called from the key thread for every swallowed key. */
-	void flash()
+	/** Called from the key thread for every swallowed key that should be shown. */
+	void flash(int allTime)
 	{
 		long now = System.currentTimeMillis();
 		if (now > showUntil)
 		{
-			burst.set(0);   // a new burst
+			burst = 0;
 		}
-		burst.incrementAndGet();
+		burst++;
+		StringBuilder sb = new StringBuilder("Dialogue Guard: swallowed ").append(burst).append(burst == 1 ? " key" : " keys");
+		if (config.showLifetime())
+		{
+			sb.append(" (").append(String.format("%,d", allTime)).append(" all-time)");
+		}
+		text = sb.toString();
 		showUntil = now + SHOW_MS;
 	}
 
@@ -55,24 +63,15 @@ public class DialogueGuardHint extends Overlay
 		{
 			return null;
 		}
-		int n = burst.get();
-		String text = "Dialogue Guard: swallowed " + n + (n == 1 ? " key" : " keys");
-		if (config.showLifetime())
-		{
-			text += " (" + String.format("%,d", plugin.swallowedCount()) + " all-time)";
-		}
-		if (font == null)
-		{
-			font = FontManager.getRunescapeSmallFont();
-		}
+		String line = text;
 		g.setFont(font);
 		FontMetrics fm = g.getFontMetrics();
-		int w = fm.stringWidth(text) + 10;
-		int h = fm.getHeight() + 4;
+		int w = fm.stringWidth(line) + 2 * PAD_X;
+		int h = fm.getHeight() + 2 * PAD_Y;
 		g.setColor(BG);
 		g.fillRoundRect(0, 0, w, h, 6, 6);
 		g.setColor(FG);
-		g.drawString(text, 5, fm.getAscent() + 2);
+		g.drawString(line, PAD_X, fm.getAscent() + PAD_Y);
 		return new Dimension(w, h);
 	}
 }

@@ -31,5 +31,12 @@ The hint shows the burst just swallowed and, optionally, the all-time total of k
 Guard number keys / space / enter (each on by default), guard window (100–3000 ms), never start a message with a
 space, clear leftover junk when a dialogue opens, show hint, show keys saved all-time in hint.
 
+## Code layout
+- `GuardState` — the decision logic, free of RuneLite: dialogue opened/closed, guarded key pressed/released, other
+  key → pass or swallow. Unit-tested in `GuardStateTest`.
+- `DialogueGuardPlugin` — the RuneLite wiring: feeds widget and key events into `GuardState`, consumes swallowed
+  keys, plus the two client-dependent extras (leading-space rule, junk clearing) and the persisted counter.
+- `DialogueGuardHint` — the overlay.
+
 ## Building
 `./gradlew build`, or double-click `build.command` / `run-client.command` (writes `build.log` / `run-client.log`).
