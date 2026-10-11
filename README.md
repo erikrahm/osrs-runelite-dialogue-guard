@@ -9,7 +9,7 @@ A dialogue page accepts exactly one guarded key (`1`–`9`, space, enter). Once 
 *armed* and swallows every further guarded key until either:
 
 - a new dialogue page loads (that page needs a key of its own), or
-- you stop pressing guarded keys for the guard window (default 600 ms).
+- you stop pressing guarded keys for the guard window (default 600 ms) — a key that is still held down counts as pressing, so the pause only starts when you let go.
 
 Any other key — a letter — ends the guard immediately, since that is clearly deliberate typing. Nothing is ever
 swallowed unless a dialogue key has just been pressed, so normal chat is untouched. A small "swallowed N keys"

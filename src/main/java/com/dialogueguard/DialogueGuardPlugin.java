@@ -64,6 +64,10 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	private volatile long lastGuardedAt;
 	/** the decision made in keyPressed, so keyTyped / keyReleased for the same key follow it */
 	private volatile boolean swallowingCurrentKey;
+	/** a guarded key is physically held down (pressed, no release yet): the pause can't start until it's let go */
+	private volatile boolean guardedKeyHeld;
+	/** if no key event arrives for this long we assume the release was lost (focus change), so a stuck "held" can't pin the guard */
+	private static final long HELD_STALE_MS = 3000;
 
 	/** keys swallowed since the plugin was installed; persisted in the config */
 	private final AtomicInteger swallowed = new AtomicInteger();
@@ -131,6 +135,18 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		armed = false;
 		lastGuardedAt = 0;
 		swallowingCurrentKey = false;
+		guardedKeyHeld = false;
+	}
+
+	/** Still inside the guard window: the last guarded key was recent, or one is still being held down. */
+	private boolean withinWindow(long now)
+	{
+		long since = now - lastGuardedAt;
+		if (guardedKeyHeld && since < HELD_STALE_MS)
+		{
+			return true;
+		}
+		return since < config.windowMs();
 	}
 
 	/** Keys swallowed all-time, for the hint. */
@@ -243,12 +259,16 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		if (code == KeyEvent.VK_SPACE && config.noLeadingSpace() && openDialogues == 0 && chatInputIsBlank())
 		{
 			// a message never starts with a space; quietly drop it (no hint: holding space outside a dialogue is common and harmless)
+			guardedKeyHeld = true;
+			lastGuardedAt = System.currentTimeMillis();
 			swallowingCurrentKey = true;
 			swallowed.incrementAndGet();
 			e.consume();
 			return;
 		}
 		long now = System.currentTimeMillis();
+		boolean inWindow = withinWindow(now);
+		guardedKeyHeld = true;   // until keyReleased
 		if (openDialogues > 0 && !armed)
 		{
 			// the one key this page is waiting for
@@ -256,9 +276,9 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 			lastGuardedAt = now;
 			return;
 		}
-		if (armed && now - lastGuardedAt < config.windowMs())
+		if (armed && inWindow)
 		{
-			// spill-over: the page already had its key (or just closed), and they're still pressing
+			// spill-over: the page already had its key (or just closed), and they're still pressing or holding
 			lastGuardedAt = now;
 			swallowingCurrentKey = true;
 			countSwallowed();
@@ -288,6 +308,11 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	@Override
 	public void keyReleased(KeyEvent e)
 	{
+		if (isGuarded(e.getKeyCode()))
+		{
+			guardedKeyHeld = false;
+			lastGuardedAt = System.currentTimeMillis();   // the pause starts now, not at the press
+		}
 		if (swallowingCurrentKey)
 		{
 			e.consume();
