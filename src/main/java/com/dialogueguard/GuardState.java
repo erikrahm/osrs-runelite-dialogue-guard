@@ -1,5 +1,5 @@
 /*
- * Dialogue Guard — the decision logic, kept free of RuneLite so it can be read and tested on its own.
+ * Dialogue Guard: the decision logic, kept free of RuneLite so it can be read and tested on its own.
  * BSD-2-Clause, see LICENSE.
  */
 package com.dialogueguard;
@@ -35,7 +35,7 @@ final class GuardState
 
 	private final LongSupplier windowMs;
 
-	/** dialogue interface groups currently open — a set, so a page reloaded in place can't double-count */
+	/** dialogue interface groups currently open. A set, so a page reloaded in place cannot double-count. */
 	private final Set<Integer> openDialogues = ConcurrentHashMap.newKeySet();
 	/** a guarded key has been sent to the page that is open (or was just open) */
 	private volatile boolean armed;

@@ -1,5 +1,5 @@
 /*
- * Dialogue Guard — the little "blocked N" note above the chat box, so a blocked key never reads as a dead keyboard.
+ * Dialogue Guard: the small "blocked N" note above the chat box, so a blocked key does not look like a dead keyboard.
  * BSD-2-Clause, see LICENSE.
  */
 package com.dialogueguard;

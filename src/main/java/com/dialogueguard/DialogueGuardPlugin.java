@@ -1,5 +1,5 @@
 /*
- * Dialogue Guard — stops dialogue-skipping keys from spilling into the chat box.
+ * Dialogue Guard: stops dialogue-skipping keys from spilling into the chat box.
  * BSD-2-Clause, see LICENSE.
  *
  * This class is the RuneLite wiring: it feeds dialogue open/close events and key events into GuardState (the

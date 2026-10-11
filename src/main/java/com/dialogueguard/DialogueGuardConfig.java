@@ -1,5 +1,5 @@
 /*
- * Dialogue Guard — BSD-2-Clause, see LICENSE.
+ * Dialogue Guard. BSD-2-Clause, see LICENSE.
  */
 package com.dialogueguard;
 

@@ -1,42 +1,47 @@
 # Dialogue Guard
 
-A RuneLite plugin that stops dialogue-skipping keys from spilling into the chat box. You hammer `1` or space to get
-through a conversation, the dialogue ends a keypress earlier than you expected, and the next few presses land in
-chat as `111` or an accidental message. This blocks them.
+A RuneLite plugin that keeps dialogue keys out of the chat box.
 
-## How it decides
-A dialogue page accepts exactly one guarded key (`1`–`9`, space, enter). Once one has been sent the plugin is
-*armed* and blocks every further guarded key until either:
+If you hold `1` or space to get through a conversation and the dialogue ends a keypress earlier than you expected, the extra presses end up in chat as `111` or get sent as a message. This plugin blocks those presses.
 
-- a new dialogue page loads (that page needs a key of its own), or
-- you stop pressing guarded keys for the guard window (default 600 ms) — a key that is still held down counts as pressing, so the pause only starts when you let go.
+## How it works
 
-Any other key — a letter — ends the guard immediately, since that is clearly deliberate typing. Nothing is ever
-blocked unless a dialogue key has just been pressed, so normal chat is untouched. A small "blocked N keys"
-note appears above the chat box so a blocked key never looks like a dead keyboard.
+Each dialogue page accepts one guarded key (`1` to `9`, space, or enter). After that key is sent, the plugin blocks any further guarded keys until one of two things happens:
 
-Dialogues recognised: NPC and player chat, option menus, message and sprite boxes, level-up screens, make-x.
+- A new dialogue page loads. That page needs a key of its own.
+- You stop pressing guarded keys for the guard window (600 ms by default). A key that is still held down counts as pressing, so the timer starts when you let go.
 
-**Never start a message with a space** (on by default): with no dialogue open and the chat box empty, the space
-bar is dropped outright, so a message can never begin with spaces. Space still works in dialogues and once you've
-typed something.
+Pressing any other key, such as a letter, ends the guard right away since you are clearly typing on purpose. Nothing is blocked unless a dialogue key was just pressed, so normal chat is not affected. A small "blocked N keys" note shows above the chat box so you can tell the key was blocked rather than ignored.
 
-**Clear leftover junk when a dialogue opens** (on by default): if the chat box holds only digits and spaces when a
-dialogue starts — a `111` left over from the last conversation — it is cleared so it can't be sent later. Real text
-is never touched.
+Recognised dialogues: NPC and player chat, option menus, message and sprite boxes, level-up screens, and the make-x prompt.
 
-The hint shows the burst just blocked and, optionally, the all-time total of keys the plugin has eaten for you.
+### Never start a message with a space
 
-## Config
-Guard number keys / space / enter (each on by default), guard window (100–3000 ms), never start a message with a
-space, clear leftover junk when a dialogue opens, show hint, show keys saved all-time in hint.
+On by default. When no dialogue is open and the chat box is empty, the space bar is dropped so a message can never begin with spaces. Space still works in dialogues and after you have typed something.
+
+### Clear leftover junk when a dialogue opens
+
+On by default. If the chat box contains only digits and spaces when a dialogue starts (for example a `111` left over from the last conversation), it is cleared so it cannot be sent later by accident. Anything with real text in it is left alone.
+
+### Hint
+
+The hint shows how many keys were blocked in the current burst and, optionally, the all-time total.
+
+## Settings
+
+- Guard number keys, guard space, guard enter (each on by default)
+- Guard window, 100 to 3000 ms
+- Never start a message with a space
+- Clear leftover junk when a dialogue opens
+- Show hint
+- Show keys blocked all-time in hint
 
 ## Code layout
-- `GuardState` — the decision logic, free of RuneLite: dialogue opened/closed, guarded key pressed/released, other
-  key → pass or block. Unit-tested in `GuardStateTest`.
-- `DialogueGuardPlugin` — the RuneLite wiring: feeds widget and key events into `GuardState`, consumes blocked
-  keys, plus the two client-dependent extras (leading-space rule, junk clearing) and the persisted counter.
-- `DialogueGuardHint` — the overlay.
+
+- `GuardState` holds the decision logic and has no RuneLite dependency. It takes dialogue opened/closed events and key pressed/released events and answers pass or block. Covered by `GuardStateTest`.
+- `DialogueGuardPlugin` is the RuneLite wiring. It feeds widget and key events into `GuardState`, consumes blocked keys, and handles the two client-dependent features (leading space rule, junk clearing) plus the saved counter.
+- `DialogueGuardHint` is the overlay.
 
 ## Building
-`./gradlew build`, or double-click `build.command` / `run-client.command` (writes `build.log` / `run-client.log`).
+
+Run `./gradlew build`, or double-click `build.command` or `run-client.command` (output goes to `build.log` or `run-client.log`).
