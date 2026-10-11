@@ -256,16 +256,6 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 			}
 			return;
 		}
-		if (code == KeyEvent.VK_SPACE && config.noLeadingSpace() && openDialogues == 0 && chatInputIsBlank())
-		{
-			// a message never starts with a space; quietly drop it (no hint: holding space outside a dialogue is common and harmless)
-			guardedKeyHeld = true;
-			lastGuardedAt = System.currentTimeMillis();
-			swallowingCurrentKey = true;
-			swallowed.incrementAndGet();
-			e.consume();
-			return;
-		}
 		long now = System.currentTimeMillis();
 		boolean inWindow = withinWindow(now);
 		guardedKeyHeld = true;   // until keyReleased
@@ -278,7 +268,8 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		}
 		if (armed && inWindow)
 		{
-			// spill-over: the page already had its key (or just closed), and they're still pressing or holding
+			// spill-over: the page already had its key (or just closed), and they're still pressing or holding.
+			// Every guarded key extends the window, space included.
 			lastGuardedAt = now;
 			swallowingCurrentKey = true;
 			countSwallowed();
@@ -287,6 +278,14 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		}
 		// the window lapsed: this is ordinary typing (a number in chat, enter to send)
 		armed = false;
+		if (code == KeyEvent.VK_SPACE && config.noLeadingSpace() && openDialogues == 0 && chatInputIsBlank())
+		{
+			// a message never starts with a space; quietly drop it (no hint: holding space outside a dialogue is common and harmless)
+			lastGuardedAt = now;
+			swallowingCurrentKey = true;
+			swallowed.incrementAndGet();
+			e.consume();
+		}
 	}
 
 	/** True when the chat box has nothing typed in it yet (or only spaces). */
