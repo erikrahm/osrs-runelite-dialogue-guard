@@ -12,7 +12,7 @@ import net.runelite.client.config.Range;
 public interface DialogueGuardConfig extends Config
 {
 	@ConfigItem(keyName = "guardDigits", name = "Guard number keys", position = 0,
-		description = "Block 1-9 (dialogue option keys) when they spill past the end of a dialogue.")
+		description = "Block 1-9 (dialogue option keys, top row or numpad) when they spill past the end of a dialogue.")
 	default boolean guardDigits()
 	{
 		return true;
@@ -58,7 +58,7 @@ public interface DialogueGuardConfig extends Config
 		description = "Briefly show how many keys were blocked above the chat box, so a blocked key never looks like a dead keyboard.")
 	default boolean showHint()
 	{
-		return true;
+		return false;
 	}
 
 	@ConfigItem(keyName = "showLifetime", name = "Show keys blocked all-time in hint", position = 7,

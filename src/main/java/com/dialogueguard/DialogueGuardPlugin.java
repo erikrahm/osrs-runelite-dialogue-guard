@@ -5,6 +5,9 @@
  * This class is the RuneLite wiring: it feeds dialogue open/close events and key events into GuardState (the
  * decision logic) and acts on its answer. Two extras live here because they need the client: the leading-space
  * rule (space is dropped while the chat box is empty) and clearing digit-only leftovers when a dialogue opens.
+ *
+ * Only presses (and the keyTyped that follows) are ever consumed. Releases always go through: a stray release is
+ * harmless, while a swallowed one could leave the client or another plugin thinking a key is still held.
  */
 package com.dialogueguard;
 
@@ -19,7 +22,6 @@ import net.runelite.api.ScriptID;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
-import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarClientID;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -44,12 +46,6 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	/** chat-box contents that are safe to clear: digits and spaces only */
 	private static final Pattern JUNK = Pattern.compile("[0-9 ]+");
 
-	/** Interface groups that take a key to advance: NPC/player chat, option menus, message/sprite boxes, level-ups, make-x. */
-	private static final int[] DIALOGUE_GROUPS = {
-		InterfaceID.CHAT_LEFT, InterfaceID.CHAT_RIGHT, InterfaceID.CHATMENU, InterfaceID.MESSAGEBOX,
-		InterfaceID.OBJECTBOX, InterfaceID.OBJECTBOX_DOUBLE, InterfaceID.LEVELUP_DISPLAY, InterfaceID.SKILLMULTI,
-	};
-
 	@Inject private Client client;
 	@Inject private ConfigManager configManager;
 	@Inject private KeyManager keyManager;
@@ -61,7 +57,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	/** keys blocked since the plugin was installed; persisted in the config */
 	private final AtomicInteger counter = new AtomicInteger();
 
-	/** the decision made in keyPressed, so keyTyped / keyReleased for the same key follow it */
+	/** the decision made in keyPressed, so the keyTyped for the same key follows it */
 	private volatile boolean blockingCurrentKey;
 	private volatile long lastPersist;
 
@@ -90,12 +86,6 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		state.reset();
 	}
 
-	/** Keys blocked all-time, for the hint. */
-	int blockedCount()
-	{
-		return counter.get();
-	}
-
 	// ------------------------------------------------------------------ all-time counter
 
 	private int loadBlocked()
@@ -116,7 +106,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		configManager.setConfiguration(CONFIG_GROUP, KEY_BLOCKED, String.valueOf(counter.get()));
 	}
 
-	/** One more key eaten. The hint only flashes for dialogue spill-over; a dropped leading space is silent. */
+	/** One more key kept out of the chat box. The hint only flashes for dialogue spill-over; a dropped leading space is silent. */
 	private void recordBlock(long now, boolean flash)
 	{
 		counter.incrementAndGet();
@@ -125,7 +115,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 			lastPersist = now;
 			persistBlocked();
 		}
-		if (flash)
+		if (flash && config.showHint())
 		{
 			hint.flash(counter.get());
 		}
@@ -136,7 +126,9 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged e)
 	{
-		if (e.getGameState() != GameState.LOGGED_IN)
+		// Only where interfaces really go away without close events. A region load (LOADING) keeps an open dialogue
+		// open, and forgetting it would let the leading-space rule eat the space that continues it.
+		if (e.getGameState() == GameState.LOGIN_SCREEN || e.getGameState() == GameState.HOPPING)
 		{
 			state.reset();
 		}
@@ -145,7 +137,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded e)
 	{
-		if (isDialogue(e.getGroupId()))
+		if (DialogueKeys.isDialogue(e.getGroupId()))
 		{
 			state.dialogueOpened(e.getGroupId());
 			if (config.clearJunkOnDialogue())
@@ -158,22 +150,10 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed e)
 	{
-		if (isDialogue(e.getGroupId()))
+		if (DialogueKeys.isDialogue(e.getGroupId()))
 		{
 			state.dialogueClosed(e.getGroupId());
 		}
-	}
-
-	private static boolean isDialogue(int groupId)
-	{
-		for (int g : DIALOGUE_GROUPS)
-		{
-			if (g == groupId)
-			{
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/** Wipe the chat box if all it holds is digits and spaces left over from an earlier dialogue. Client thread. */
@@ -192,25 +172,17 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 
 	private boolean isGuarded(int keyCode)
 	{
-		if (keyCode >= KeyEvent.VK_1 && keyCode <= KeyEvent.VK_9)
+		switch (DialogueKeys.kind(keyCode))
 		{
-			return config.guardDigits();
+			case DIGIT:
+				return config.guardDigits();
+			case SPACE:
+				return config.guardSpace();
+			case ENTER:
+				return config.guardEnter();
+			default:
+				return false;
 		}
-		if (keyCode == KeyEvent.VK_SPACE)
-		{
-			return config.guardSpace();
-		}
-		if (keyCode == KeyEvent.VK_ENTER)
-		{
-			return config.guardEnter();
-		}
-		return false;
-	}
-
-	private static boolean isModifier(int keyCode)
-	{
-		return keyCode == KeyEvent.VK_SHIFT || keyCode == KeyEvent.VK_CONTROL || keyCode == KeyEvent.VK_ALT
-			|| keyCode == KeyEvent.VK_META || keyCode == KeyEvent.VK_CAPS_LOCK || keyCode == KeyEvent.VK_UNDEFINED;
 	}
 
 	@Override
@@ -224,20 +196,28 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		int code = e.getKeyCode();
 		if (!isGuarded(code))
 		{
-			if (!isModifier(code))
+			if (!DialogueKeys.isModifier(code))
 			{
 				state.otherKeyPressed();
 			}
 			return;
 		}
 		long now = System.currentTimeMillis();
-		if (state.guardedKeyPressed(now) == GuardState.Decision.BLOCK)
+		switch (state.guardedKeyPressed(now, DialogueKeys.pageAccepts(state.page(), code)))
 		{
-			block(e, now, true);
-			return;
+			case HOLD:
+				// the open page already has its key: blocked, but not counted or shown
+				blockingCurrentKey = true;
+				e.consume();
+				return;
+			case BLOCK:
+				block(e, now, true);
+				return;
+			case PASS:
+				break;
 		}
 		// Not spill-over. One more rule for space: a message never starts with one.
-		if (code == KeyEvent.VK_SPACE && config.noLeadingSpace() && !state.dialogueOpen() && chatInputIsBlank())
+		if (DialogueKeys.kind(code) == DialogueKeys.Kind.SPACE && config.noLeadingSpace() && !state.dialogueOpen() && chatInputIsBlank())
 		{
 			state.touch(now);
 			block(e, now, false);
@@ -251,9 +231,17 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		e.consume();
 	}
 
-	/** True when the chat box has nothing typed in it yet (or only spaces). */
+	/**
+	 * True when the chat line has nothing typed in it yet (or only spaces) and is where keys are going. A chat-box
+	 * prompt (bank or GE search, "Enter amount", a name) keeps its text elsewhere and leaves the chat line empty,
+	 * so the rule must stand aside while one is open or it would eat the space in "dragon bones".
+	 */
 	private boolean chatInputIsBlank()
 	{
+		if (client.getVarcIntValue(VarClientID.MESLAYERMODE) != 0)
+		{
+			return false;
+		}
 		String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
 		return typed == null || typed.trim().isEmpty();
 	}
@@ -273,10 +261,6 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		if (isGuarded(e.getKeyCode()))
 		{
 			state.guardedKeyReleased(System.currentTimeMillis());
-		}
-		if (blockingCurrentKey)
-		{
-			e.consume();
 		}
 	}
 }
