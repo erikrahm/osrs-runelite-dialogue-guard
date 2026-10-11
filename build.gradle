@@ -1,0 +1,41 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        url = 'https://repo.runelite.net'
+    }
+    mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+
+dependencies {
+    compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
+
+    testImplementation 'junit:junit:4.12'
+    testImplementation 'org.slf4j:slf4j-simple:1.7.12'
+    testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion, {
+        exclude group: 'ch.qos.logback', module: 'logback-classic'
+    }
+}
+
+group = 'com.dialogueguard'
+version = '0.1.0'
+sourceCompatibility = '11'
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+// Launches a RuneLite client with this plugin loaded (same as running DialogueGuardPluginTest from an IDE).
+task runClient(type: JavaExec, dependsOn: testClasses) {
+    group = 'application'
+    description = 'Run RuneLite with Dialogue Guard loaded'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.dialogueguard.DialogueGuardPluginTest'
+    args = ['--developer-mode']
+    jvmArgs = ['-ea', '--add-exports', 'java.desktop/com.apple.eawt=ALL-UNNAMED', '--add-opens', 'java.desktop/sun.awt=ALL-UNNAMED']
+}
