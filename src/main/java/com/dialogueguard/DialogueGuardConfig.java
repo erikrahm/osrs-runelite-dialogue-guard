@@ -47,9 +47,23 @@ public interface DialogueGuardConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(keyName = "showHint", name = "Show hint", position = 5,
+	@ConfigItem(keyName = "clearJunkOnDialogue", name = "Clear leftover junk when a dialogue opens", position = 5,
+		description = "If the chat box holds only digits and spaces (a '111' left over from the last conversation) when a dialogue opens, clear it so it can't be sent later by accident. Real text is never touched.")
+	default boolean clearJunkOnDialogue()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "showHint", name = "Show hint", position = 6,
 		description = "Briefly show how many keys were swallowed above the chat box, so a swallowed key never looks like a dead keyboard.")
 	default boolean showHint()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "showLifetime", name = "Show keys saved all-time in hint", position = 7,
+		description = "Append the running total of keys this plugin has swallowed for you to the hint.")
+	default boolean showLifetime()
 	{
 		return true;
 	}

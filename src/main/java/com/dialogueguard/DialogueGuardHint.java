@@ -22,15 +22,17 @@ public class DialogueGuardHint extends Overlay
 	private static final Color FG = new Color(255, 200, 80);
 
 	private final DialogueGuardConfig config;
+	private final DialogueGuardPlugin plugin;
 	/** keys swallowed in the current burst (reset once the hint has faded) */
 	private final AtomicInteger burst = new AtomicInteger();
 	private volatile long showUntil;
 	private Font font;
 
 	@Inject
-	public DialogueGuardHint(DialogueGuardConfig config)
+	public DialogueGuardHint(DialogueGuardConfig config, DialogueGuardPlugin plugin)
 	{
 		this.config = config;
+		this.plugin = plugin;
 		setPosition(OverlayPosition.ABOVE_CHATBOX_RIGHT);
 	}
 
@@ -55,6 +57,10 @@ public class DialogueGuardHint extends Overlay
 		}
 		int n = burst.get();
 		String text = "Dialogue Guard: swallowed " + n + (n == 1 ? " key" : " keys");
+		if (config.showLifetime())
+		{
+			text += " (" + String.format("%,d", plugin.swallowedCount()) + " all-time)";
+		}
 		if (font == null)
 		{
 			font = FontManager.getRunescapeSmallFont();

@@ -21,9 +21,15 @@ Dialogues recognised: NPC and player chat, option menus, message and sprite boxe
 bar is dropped outright, so a message can never begin with spaces. Space still works in dialogues and once you've
 typed something.
 
+**Clear leftover junk when a dialogue opens** (on by default): if the chat box holds only digits and spaces when a
+dialogue starts — a `111` left over from the last conversation — it is cleared so it can't be sent later. Real text
+is never touched.
+
+The hint shows the burst just swallowed and, optionally, the all-time total of keys the plugin has eaten for you.
+
 ## Config
 Guard number keys / space / enter (each on by default), guard window (100–3000 ms), never start a message with a
-space, show hint.
+space, clear leftover junk when a dialogue opens, show hint, show keys saved all-time in hint.
 
 ## Building
 `./gradlew build`, or double-click `build.command` / `run-client.command` (writes `build.log` / `run-client.log`).

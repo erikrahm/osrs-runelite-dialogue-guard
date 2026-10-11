@@ -16,11 +16,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.ScriptID;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarClientID;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.input.KeyListener;
@@ -37,6 +39,8 @@ import net.runelite.client.ui.overlay.OverlayManager;
 public class DialogueGuardPlugin extends Plugin implements KeyListener
 {
 	static final String CONFIG_GROUP = "dialogueguard";
+	/** config key the all-time counter is persisted under (not shown in the settings panel) */
+	private static final String KEY_SAVED = "keysSaved";
 
 	/** Interface groups that take a key to advance: NPC/player chat, option menus, message/sprite boxes, level-ups, make-x. */
 	private static final int[] DIALOGUE_GROUPS = {
@@ -45,6 +49,8 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	};
 
 	@Inject private Client client;
+	@Inject private ClientThread clientThread;
+	@Inject private ConfigManager configManager;
 	@Inject private KeyManager keyManager;
 	@Inject private OverlayManager overlayManager;
 	@Inject private DialogueGuardConfig config;
@@ -59,6 +65,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	/** the decision made in keyPressed, so keyTyped / keyReleased for the same key follow it */
 	private volatile boolean swallowingCurrentKey;
 
+	/** keys swallowed since the plugin was installed; persisted in the config */
 	private final AtomicInteger swallowed = new AtomicInteger();
 
 	@Provides
@@ -71,6 +78,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	protected void startUp()
 	{
 		reset();
+		swallowed.set(loadSaved());
 		keyManager.registerKeyListener(this);
 		overlayManager.add(hint);
 	}
@@ -80,7 +88,41 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	{
 		keyManager.unregisterKeyListener(this);
 		overlayManager.remove(hint);
+		persistSaved();
 		reset();
+	}
+
+	private int loadSaved()
+	{
+		try
+		{
+			String v = configManager.getConfiguration(CONFIG_GROUP, KEY_SAVED);
+			return v == null ? 0 : Integer.parseInt(v);
+		}
+		catch (NumberFormatException e)
+		{
+			return 0;
+		}
+	}
+
+	private void persistSaved()
+	{
+		configManager.setConfiguration(CONFIG_GROUP, KEY_SAVED, String.valueOf(swallowed.get()));
+	}
+
+	private volatile long lastPersist;
+
+	/** One more key eaten: bump the all-time counter (persisted at most once a second, and on shutdown) and flash the hint. */
+	private void countSwallowed()
+	{
+		swallowed.incrementAndGet();
+		long now = System.currentTimeMillis();
+		if (now - lastPersist > 1000)
+		{
+			lastPersist = now;
+			persistSaved();
+		}
+		hint.flash();
 	}
 
 	private void reset()
@@ -91,6 +133,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		swallowingCurrentKey = false;
 	}
 
+	/** Keys swallowed all-time, for the hint. */
 	int swallowedCount()
 	{
 		return swallowed.get();
@@ -114,7 +157,23 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		{
 			openDialogues++;
 			armed = false;   // a fresh page: it needs a key of its own
+			if (config.clearJunkOnDialogue())
+			{
+				clearJunkFromChat();
+			}
 		}
+	}
+
+	/** Client thread: wipe the chat box if all it holds is digits and spaces left over from an earlier dialogue. */
+	private void clearJunkFromChat()
+	{
+		String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
+		if (typed == null || typed.isEmpty() || !typed.matches("[0-9 ]+"))
+		{
+			return;
+		}
+		client.setVarcStrValue(VarClientID.CHATINPUT, "");
+		client.runScript(ScriptID.CHAT_PROMPT_INIT);   // redraw the input line
 	}
 
 	@Subscribe
@@ -185,6 +244,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		{
 			// a message never starts with a space; quietly drop it (no hint: holding space outside a dialogue is common and harmless)
 			swallowingCurrentKey = true;
+			swallowed.incrementAndGet();
 			e.consume();
 			return;
 		}
@@ -201,8 +261,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 			// spill-over: the page already had its key (or just closed), and they're still pressing
 			lastGuardedAt = now;
 			swallowingCurrentKey = true;
-			swallowed.incrementAndGet();
-			hint.flash();
+			countSwallowed();
 			e.consume();
 			return;
 		}
