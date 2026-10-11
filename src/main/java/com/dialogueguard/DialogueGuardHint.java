@@ -1,5 +1,5 @@
 /*
- * Dialogue Guard — the little "swallowed N" note above the chat box, so a swallowed key never reads as a dead keyboard.
+ * Dialogue Guard — the little "blocked N" note above the chat box, so a blocked key never reads as a dead keyboard.
  * BSD-2-Clause, see LICENSE.
  */
 package com.dialogueguard;
@@ -25,10 +25,10 @@ public class DialogueGuardHint extends Overlay
 	private final DialogueGuardConfig config;
 	private final Font font = FontManager.getRunescapeSmallFont();
 
-	/** keys swallowed in the current burst (a burst ends once the hint has faded) */
+	/** keys blocked in the current burst (a burst ends once the hint has faded) */
 	private int burst;
 	private volatile long showUntil;
-	/** the line to draw, built when a key is swallowed rather than every frame */
+	/** the line to draw, built when a key is blocked rather than every frame */
 	private volatile String text = "";
 
 	@Inject
@@ -38,7 +38,7 @@ public class DialogueGuardHint extends Overlay
 		setPosition(OverlayPosition.ABOVE_CHATBOX_RIGHT);
 	}
 
-	/** Called from the key thread for every swallowed key that should be shown. */
+	/** Called from the key thread for every blocked key that should be shown. */
 	void flash(int allTime)
 	{
 		long now = System.currentTimeMillis();
@@ -47,7 +47,7 @@ public class DialogueGuardHint extends Overlay
 			burst = 0;
 		}
 		burst++;
-		StringBuilder sb = new StringBuilder("Dialogue Guard: swallowed ").append(burst).append(burst == 1 ? " key" : " keys");
+		StringBuilder sb = new StringBuilder("Dialogue Guard: blocked ").append(burst).append(burst == 1 ? " key" : " keys");
 		if (config.showLifetime())
 		{
 			sb.append(" (").append(String.format("%,d", allTime)).append(" all-time)");

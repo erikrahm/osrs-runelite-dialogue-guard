@@ -12,7 +12,7 @@ import java.util.function.LongSupplier;
  * Decides whether a dialogue key (1-9, space, enter) should reach the game.
  *
  * <p>A dialogue page accepts exactly one guarded key. Once one has been sent the guard is <em>armed</em> and
- * every further guarded key is swallowed until a new page loads (which needs a key of its own) or the player
+ * every further guarded key is blocked until a new page loads (which needs a key of its own) or the player
  * stops pressing guarded keys for the window. A key that is still held down counts as pressing, so the pause
  * only starts at release. Any other key ends the guard immediately: that is deliberate typing.
  *
@@ -26,8 +26,8 @@ final class GuardState
 	{
 		/** Let it through: a dialogue page is waiting for it, or the guard has lapsed. */
 		PASS,
-		/** Swallow it: spill-over from a dialogue that already had its key. */
-		SWALLOW
+		/** Block it: spill-over from a dialogue that already had its key. */
+		BLOCK
 	}
 
 	/** No key event for this long means the release was lost (focus change); a stuck "held" must not pin the guard. */
@@ -95,7 +95,7 @@ final class GuardState
 		if (armed && inWindow)
 		{
 			lastGuardedAt = now;
-			return Decision.SWALLOW;
+			return Decision.BLOCK;
 		}
 		armed = false;
 		return Decision.PASS;

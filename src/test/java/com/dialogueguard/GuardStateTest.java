@@ -1,7 +1,7 @@
 package com.dialogueguard;
 
 import static com.dialogueguard.GuardState.Decision.PASS;
-import static com.dialogueguard.GuardState.Decision.SWALLOW;
+import static com.dialogueguard.GuardState.Decision.BLOCK;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import org.junit.Test;
@@ -23,26 +23,26 @@ public class GuardStateTest
 	}
 
 	@Test
-	public void eachPageTakesOneKeyAndSwallowsTheRest()
+	public void eachPageTakesOneKeyAndBlocksTheRest()
 	{
 		state.dialogueOpened(CHAT);
 		assertEquals(PASS, state.guardedKeyPressed(1000));      // continues the page
-		assertEquals(SWALLOW, state.guardedKeyPressed(1100));   // page hasn't changed yet: spill-over
+		assertEquals(BLOCK, state.guardedKeyPressed(1100));   // page hasn't changed yet: spill-over
 		state.dialogueClosed(CHAT);
 		state.dialogueOpened(CHAT);                               // next page
 		assertEquals(PASS, state.guardedKeyPressed(1700));
-		assertEquals(SWALLOW, state.guardedKeyPressed(1750));
+		assertEquals(BLOCK, state.guardedKeyPressed(1750));
 	}
 
 	@Test
-	public void spillOverAfterTheDialogueEndsIsSwallowedWhileStillPressing()
+	public void spillOverAfterTheDialogueEndsIsBlockedWhileStillPressing()
 	{
 		state.dialogueOpened(OPTIONS);
 		assertEquals(PASS, state.guardedKeyPressed(1000));
 		state.dialogueClosed(OPTIONS);
-		assertEquals(SWALLOW, state.guardedKeyPressed(1200));
-		assertEquals(SWALLOW, state.guardedKeyPressed(1500));
-		assertEquals(SWALLOW, state.guardedKeyPressed(2000));   // each press extends the window
+		assertEquals(BLOCK, state.guardedKeyPressed(1200));
+		assertEquals(BLOCK, state.guardedKeyPressed(1500));
+		assertEquals(BLOCK, state.guardedKeyPressed(2000));   // each press extends the window
 	}
 
 	@Test
@@ -62,9 +62,9 @@ public class GuardStateTest
 		state.guardedKeyPressed(1000);                            // pressed and held
 		state.dialogueClosed(OPTIONS);
 		// OS auto-repeat only starts after a long delay, well past the window
-		assertEquals(SWALLOW, state.guardedKeyPressed(1000 + WINDOW + 500));
+		assertEquals(BLOCK, state.guardedKeyPressed(1000 + WINDOW + 500));
 		state.guardedKeyReleased(2200);
-		assertEquals(SWALLOW, state.guardedKeyPressed(2200 + WINDOW - 1));
+		assertEquals(BLOCK, state.guardedKeyPressed(2200 + WINDOW - 1));
 		state.guardedKeyReleased(2800);
 		assertEquals(PASS, state.guardedKeyPressed(2800 + WINDOW + 1));
 	}

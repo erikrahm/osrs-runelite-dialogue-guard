@@ -38,8 +38,8 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 {
 	static final String CONFIG_GROUP = "dialogueguard";
 	/** config key the all-time counter is persisted under (not shown in the settings panel) */
-	private static final String KEY_SAVED = "keysSaved";
-	/** the all-time counter is written at most this often while keys are being swallowed (and always on shutdown) */
+	private static final String KEY_BLOCKED = "keysBlocked";
+	/** the all-time counter is written at most this often while keys are being blocked (and always on shutdown) */
 	private static final long PERSIST_INTERVAL_MS = 1000;
 	/** chat-box contents that are safe to clear: digits and spaces only */
 	private static final Pattern JUNK = Pattern.compile("[0-9 ]+");
@@ -58,11 +58,11 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	@Inject private DialogueGuardHint hint;
 
 	private final GuardState state = new GuardState(() -> config.windowMs());
-	/** keys swallowed since the plugin was installed; persisted in the config */
+	/** keys blocked since the plugin was installed; persisted in the config */
 	private final AtomicInteger counter = new AtomicInteger();
 
 	/** the decision made in keyPressed, so keyTyped / keyReleased for the same key follow it */
-	private volatile boolean swallowingCurrentKey;
+	private volatile boolean blockingCurrentKey;
 	private volatile long lastPersist;
 
 	@Provides
@@ -75,8 +75,8 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	protected void startUp()
 	{
 		state.reset();
-		swallowingCurrentKey = false;
-		counter.set(loadSaved());
+		blockingCurrentKey = false;
+		counter.set(loadBlocked());
 		keyManager.registerKeyListener(this);
 		overlayManager.add(hint);
 	}
@@ -86,23 +86,23 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	{
 		keyManager.unregisterKeyListener(this);
 		overlayManager.remove(hint);
-		persistSaved();
+		persistBlocked();
 		state.reset();
 	}
 
-	/** Keys swallowed all-time, for the hint. */
-	int swallowedCount()
+	/** Keys blocked all-time, for the hint. */
+	int blockedCount()
 	{
 		return counter.get();
 	}
 
 	// ------------------------------------------------------------------ all-time counter
 
-	private int loadSaved()
+	private int loadBlocked()
 	{
 		try
 		{
-			String v = configManager.getConfiguration(CONFIG_GROUP, KEY_SAVED);
+			String v = configManager.getConfiguration(CONFIG_GROUP, KEY_BLOCKED);
 			return v == null ? 0 : Integer.parseInt(v);
 		}
 		catch (NumberFormatException e)
@@ -111,19 +111,19 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		}
 	}
 
-	private void persistSaved()
+	private void persistBlocked()
 	{
-		configManager.setConfiguration(CONFIG_GROUP, KEY_SAVED, String.valueOf(counter.get()));
+		configManager.setConfiguration(CONFIG_GROUP, KEY_BLOCKED, String.valueOf(counter.get()));
 	}
 
 	/** One more key eaten. The hint only flashes for dialogue spill-over; a dropped leading space is silent. */
-	private void recordSwallow(long now, boolean flash)
+	private void recordBlock(long now, boolean flash)
 	{
 		counter.incrementAndGet();
 		if (now - lastPersist > PERSIST_INTERVAL_MS)
 		{
 			lastPersist = now;
-			persistSaved();
+			persistBlocked();
 		}
 		if (flash)
 		{
@@ -216,7 +216,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	@Override
 	public void keyPressed(KeyEvent e)
 	{
-		swallowingCurrentKey = false;
+		blockingCurrentKey = false;
 		if (client.getGameState() != GameState.LOGGED_IN)
 		{
 			return;
@@ -231,23 +231,23 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 			return;
 		}
 		long now = System.currentTimeMillis();
-		if (state.guardedKeyPressed(now) == GuardState.Decision.SWALLOW)
+		if (state.guardedKeyPressed(now) == GuardState.Decision.BLOCK)
 		{
-			swallow(e, now, true);
+			block(e, now, true);
 			return;
 		}
 		// Not spill-over. One more rule for space: a message never starts with one.
 		if (code == KeyEvent.VK_SPACE && config.noLeadingSpace() && !state.dialogueOpen() && chatInputIsBlank())
 		{
 			state.touch(now);
-			swallow(e, now, false);
+			block(e, now, false);
 		}
 	}
 
-	private void swallow(KeyEvent e, long now, boolean flash)
+	private void block(KeyEvent e, long now, boolean flash)
 	{
-		swallowingCurrentKey = true;
-		recordSwallow(now, flash);
+		blockingCurrentKey = true;
+		recordBlock(now, flash);
 		e.consume();
 	}
 
@@ -261,7 +261,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 	@Override
 	public void keyTyped(KeyEvent e)
 	{
-		if (swallowingCurrentKey)
+		if (blockingCurrentKey)
 		{
 			e.consume();
 		}
@@ -274,7 +274,7 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		{
 			state.guardedKeyReleased(System.currentTimeMillis());
 		}
-		if (swallowingCurrentKey)
+		if (blockingCurrentKey)
 		{
 			e.consume();
 		}
