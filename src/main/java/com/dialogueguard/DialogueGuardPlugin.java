@@ -20,6 +20,7 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.VarClientID;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.input.KeyListener;
@@ -180,6 +181,13 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 			}
 			return;
 		}
+		if (code == KeyEvent.VK_SPACE && config.noLeadingSpace() && openDialogues == 0 && chatInputIsBlank())
+		{
+			// a message never starts with a space; quietly drop it (no hint: holding space outside a dialogue is common and harmless)
+			swallowingCurrentKey = true;
+			e.consume();
+			return;
+		}
 		long now = System.currentTimeMillis();
 		if (openDialogues > 0 && !armed)
 		{
@@ -200,6 +208,13 @@ public class DialogueGuardPlugin extends Plugin implements KeyListener
 		}
 		// the window lapsed: this is ordinary typing (a number in chat, enter to send)
 		armed = false;
+	}
+
+	/** True when the chat box has nothing typed in it yet (or only spaces). */
+	private boolean chatInputIsBlank()
+	{
+		String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
+		return typed == null || typed.trim().isEmpty();
 	}
 
 	@Override

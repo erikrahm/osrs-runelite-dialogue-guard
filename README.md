@@ -17,8 +17,13 @@ note appears above the chat box so a swallowed key never looks like a dead keybo
 
 Dialogues recognised: NPC and player chat, option menus, message and sprite boxes, level-up screens, make-x.
 
+**Never start a message with a space** (on by default): with no dialogue open and the chat box empty, the space
+bar is dropped outright, so a message can never begin with spaces. Space still works in dialogues and once you've
+typed something.
+
 ## Config
-Guard number keys / space / enter (each on by default), guard window (100–3000 ms), show hint.
+Guard number keys / space / enter (each on by default), guard window (100–3000 ms), never start a message with a
+space, show hint.
 
 ## Building
 `./gradlew build`, or double-click `build.command` / `run-client.command` (writes `build.log` / `run-client.log`).

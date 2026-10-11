@@ -40,7 +40,14 @@ public interface DialogueGuardConfig extends Config
 		return 600;
 	}
 
-	@ConfigItem(keyName = "showHint", name = "Show hint", position = 4,
+	@ConfigItem(keyName = "noLeadingSpace", name = "Never start a message with a space", position = 4,
+		description = "Swallow the space bar whenever the chat box is empty and no dialogue is open, so a message can never begin with spaces. Space still works in dialogues and once you've typed something.")
+	default boolean noLeadingSpace()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "showHint", name = "Show hint", position = 5,
 		description = "Briefly show how many keys were swallowed above the chat box, so a swallowed key never looks like a dead keyboard.")
 	default boolean showHint()
 	{
