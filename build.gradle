@@ -23,7 +23,7 @@ dependencies {
 }
 
 group = 'com.dialogueguard'
-version = '0.1.0'
+version = '0.1.1'
 sourceCompatibility = '11'
 
 tasks.withType(JavaCompile) {
